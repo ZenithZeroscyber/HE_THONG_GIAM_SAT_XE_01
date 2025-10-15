@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <title>HỆ THỐNG GIÁM SÁT XE Ô TÔ (CAN Bus Monitoring)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            text-align: center;
+            background-color: #eef1f5;
+            margin: 0;
+            padding: 0 10px 40px;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        h1 {
+            margin: 30px auto 20px;
+            font-size: 2.2rem;
+            color: #2c3e50;
+        }
+        #dashboard {
+            max-width: 1100px;
+            margin: 0 auto;
+            width: 100%;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 20px;
+        }
+        .data-card {
+            background-color: white;
+            padding: 25px 20px;
+            border-radius: 15px;
+            box-shadow: 0 6px 15px rgba(0, 0, 0, 0.1);
+            width: 250px;
+            min-height: 120px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-around;
+            transition: transform 0.3s ease;
+            text-align: left;
+        }
+        .data-card:hover {
+            transform: translateY(-5px);
+        }
+        .data-card h2 {
+            margin: 0 0 5px;
+            font-size: 1.1rem;
+            color: #34495e;
+            opacity: 0.8;
+            font-weight: 500;
+        }
+        .data-value {
+            font-size: 2.5rem;
+            font-weight: bold;
+            color: #2980b9;
+            margin-top: 5px;
+        }
+        .unit {
+            font-size: 1.2rem;
+            font-weight: normal;
+            margin-left: 5px;
+            color: #7f8c8d;
+        }
+        /* Color coding for specific cards */
+        #speed-card .data-value { color: #e74c3c; } /* Tốc độ: Đỏ */
+        #rpm-card .data-value { color: #f39c12; } /* Vòng tua: Cam */
+        #fuel-card .data-value { color: #27ae60; } /* Nhiên liệu: Xanh lá */
+        #temp-card .data-value { color: #9b59b6; } /* Nhiệt độ: Tím */
+
+        #status-bar {
+            margin: 20px auto;
+            font-size: 1rem;
+            color: #555;
+        }
+        footer {
+            margin-top: auto;
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            padding: 15px 0;
+            border-top: 1px solid #ddd;
+        }
+        /* Mobile adjustment */
+        @media (max-width: 600px) {
+            .data-card {
+                width: 90%;
+            }
+            h1 {
+                font-size: 1.8rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <h1>HỆ THỐNG GIÁM SÁT XE Ô TÔ</h1>
+    
+    <div id="status-bar">
+        Trạng thái kết nối: <span id="connectionStatus" style="font-weight: bold; color: #e74c3c;">Đang kết nối...</span>
+    </div>
+
+    <div id="dashboard">
+        <div class="data-card" id="speed-card">
+            <h2>Tốc độ xe</h2>
+            <div class="data-value"><span id="speedValue">0</span><span class="unit"> km/h</span></div>
+        </div>
+
+        <div class="data-card" id="rpm-card">
+            <h2>Tốc độ động cơ</h2>
+            <div class="data-value"><span id="rpmValue">0</span><span class="unit"> vòng/phút</span></div>
+        </div>
+
+        <div class="data-card" id="fuel-card">
+            <h2>Nhiên liệu</h2>
+            <div class="data-value"><span id="fuelValue">0</span><span class="unit"> %</span></div>
+        </div>
+
+        <div class="data-card" id="temp-card">
+            <h2>Nhiệt độ nước làm mát</h2>
+            <div class="data-value"><span id="tempValue">0</span><span class="unit"> °C</span></div>
+        </div>
+    </div>
+
+    <footer>
+        Dự án Giám sát CAN Bus. Vui lòng đảm bảo thiết bị ESP32 đang gửi dữ liệu.
+    </footer>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+
+    <script>
+      
+        const firebaseConfig = {
+  apiKey: "AIzaSyB8cNQCrCTmVUYTaO-BA8B927jR383WCqk",
+  authDomain: "nghien-cuu-khoa-hoc-bc273.firebaseapp.com",
+  databaseURL: "https://nghien-cuu-khoa-hoc-bc273-default-rtdb.firebaseio.com",
+  projectId: "nghien-cuu-khoa-hoc-bc273",
+  storageBucket: "nghien-cuu-khoa-hoc-bc273.firebasestorage.app",
+  messagingSenderId: "421701420881",
+  appId: "1:421701420881:web:f5efb9c05aa4d0a154f570",
+  measurementId: "G-JGH6EX9BV1"
+};
+        
+        // Khởi tạo Firebase
+        firebase.initializeApp(firebaseConfig);
+        const db = firebase.database();
+        const dataPath = "CAR_DATA"; // Tên node cha mà ESP32 của bạn gửi dữ liệu tới
+
+        const metrics = [
+            { id: "speed", unit: "km/h", dbKey: "Speed" },
+            { id: "rpm", unit: "vòng/phút", dbKey: "RPM" },
+            { id: "fuel", unit: "%", dbKey: "Fuel" },
+            { id: "temp", unit: "°C", dbKey: "CoolantTemp" }
+        ];
+
+        function startMonitoring() {
+            const statusElement = document.getElementById("connectionStatus");
+            const dataRef = db.ref(dataPath);
+
+            // Bắt đầu lắng nghe dữ liệu từ Firebase
+            dataRef.on("value", (snapshot) => {
+                const data = snapshot.val();
+                
+                // Cập nhật trạng thái kết nối
+                statusElement.innerText = "Đã kết nối";
+                statusElement.style.color = "#27ae60";
+
+                if (data) {
+                    metrics.forEach(metric => {
+                        const valueElement = document.getElementById(`${metric.id}Value`);
+                        // Lấy giá trị từ Firebase, làm tròn số thập phân (nếu cần)
+                        let value = data[metric.dbKey] !== undefined ? data[metric.dbKey] : 0;
+                        
+                        // Định dạng giá trị (ví dụ: làm tròn RPM và Tốc độ)
+                        if (metric.id === "speed" || metric.id === "rpm") {
+                            value = Math.round(value);
+                        }
+
+                        valueElement.innerText = value.toLocaleString('vi-VN'); // Dùng định dạng Việt Nam cho số
+                    });
+                } else {
+                     // Trường hợp không có dữ liệu
+                     metrics.forEach(metric => {
+                        document.getElementById(`${metric.id}Value`).innerText = "---";
+                    });
+                }
+            }, (error) => {
+                console.error("Firebase Read Failed:", error);
+                statusElement.innerText = "LỖI KẾT NỐI";
+                statusElement.style.color = "#d32f2f";
+            });
+        }
+
+        // Tự động khởi động giám sát khi trang được tải
+        startMonitoring();
+    </script>
+</body>
+</html>
